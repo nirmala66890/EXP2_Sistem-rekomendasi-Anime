@@ -1,10 +1,10 @@
 // ==============================================================================
-// FULL CODE FINAL: SRC/LIB/API.TS - EXPERIMENT 2 PRODUCTION (HUGGING FACE LIVE)
+// FULL CODE FINAL FIX PARSING: SRC/LIB/API.TS - EXPERIMENT 2 PRODUCTION
 // ==============================================================================
 
 export const BASE_URL = 'https://api.jikan.moe/v4';
 
-// SUDAH DIALIKAN: Menembak langsung ke server Hugging Face Space Experiment 2 kamu yang baru
+// Endpoint murni Hugging Face Space Experiment 2 milikmu
 const FASTAPI_URL = "https://jikojeromi77-be-exp2.hf.space";
 
 export interface Anime {
@@ -28,12 +28,36 @@ export interface Anime {
   recommendation_source?: string;
 }
 
-// Helper fungsi delay untuk mencegah Jikan API Rate Limit 429 (Maksimal 3 request per detik)
+// Helper fungsi delay untuk mencegah Jikan API Rate Limit 429
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
+ * HELPER SANITASI: Mengubah string literal seperti "['Action', 'Supernatural']" 
+ * menjadi array objek standar [{ name: 'Action' }, { name: 'Supernatural' }] secara aman.
+ */
+function safeParseTags(tagRaw: any): { name: string }[] {
+  if (!tagRaw) return [];
+  if (Array.isArray(tagRaw)) {
+    return tagRaw.map((t: any) => ({ name: typeof t === 'string' ? t : (t.name || '') }));
+  }
+  
+  try {
+    // Jika bentuknya string "['Tag1', 'Tag2']", bersihkan tanda kurung siku dan kutipnya
+    if (typeof tagRaw === 'string') {
+      const cleaned = tagRaw.replace(/[\[\]']/g, '').split(',');
+      return cleaned
+        .map(t => t.trim())
+        .filter(t => t.length > 0)
+        .map(t => ({ name: t }));
+    }
+  } catch (e) {
+    console.error("Gagal melakukan sanitasi tag string:", e);
+  }
+  return [];
+}
+
+/**
  * HELPER: Mengambil detail satu anime secara cerdas dari Jikan.
- * Mengutamakan mal_id jika ada, atau menggunakan query title sebagai fallback.
  */
 async function fetchJikanDetail(item: any): Promise<any> {
   if (item.mal_id) {
@@ -52,54 +76,38 @@ async function fetchJikanDetail(item: any): Promise<any> {
 }
 
 /**
- * HELPER: Memproses pengayaan data gambar dari Jikan menggunakan sistem Batch (Paralel)
- * Jauh lebih cepat daripada loop satu per satu (sekuensial).
+ * HELPER: Memproses pengayaan data gambar menggunakan sistem Batch paralel yang kebal crash parsing.
  */
 async function enrichAnimeDataBatch(recommendations: any[]): Promise<Anime[]> {
   const finalEnrichedAnimeList: Anime[] = [];
-  const BATCH_SIZE = 3; // Mengambil 3 gambar anime sekaligus per gelombang agar tidak diblokir Jikan
+  const BATCH_SIZE = 3; 
 
   for (let i = 0; i < recommendations.length; i += BATCH_SIZE) {
     const batch = recommendations.slice(i, i + BATCH_SIZE);
     
     const batchPromises = batch.map(async (item) => {
+      // Olah genre dan theme menggunakan fungsi pembersih yang aman
+      const parsedGenres = safeParseTags(item.genres);
+      const parsedThemes = safeParseTags(item.themes);
+
       try {
         const matchedAnime = await fetchJikanDetail(item);
         
-        // Memparsing struktur data genres & themes dari backend
-        let parsedGenres: { name: string }[] = [];
-        if (item.genres) {
-          parsedGenres = Array.isArray(item.genres) 
-            ? item.genres.map((g: any) => ({ name: typeof g === 'string' ? g : (g.name || '') }))
-            : JSON.parse(item.genres.replace(/'/g, '"')).map((g: any) => ({ name: g }));
-        } else {
-          parsedGenres = matchedAnime.genres || [];
-        }
-
-        let parsedThemes: { name: string }[] = [];
-        if (item.themes) {
-          parsedThemes = Array.isArray(item.themes)
-            ? item.themes.map((t: any) => ({ name: typeof t === 'string' ? t : (t.name || '') }))
-            : JSON.parse(item.themes.replace(/'/g, '"')).map((t: any) => ({ name: t }));
-        } else {
-          parsedThemes = matchedAnime.themes || [];
-        }
-
         return {
           mal_id: item.mal_id || matchedAnime.mal_id,
           title: item.title,
           score: matchedAnime.score || item.score || 0,
           synopsis: matchedAnime.synopsis || "No synopsis available.",
           images: matchedAnime.images || item.images,
-          genres: parsedGenres,
-          themes: parsedThemes,
+          genres: parsedGenres.length > 0 ? parsedGenres : (matchedAnime.genres || []),
+          themes: parsedThemes.length > 0 ? parsedThemes : (matchedAnime.themes || []),
           cf_norm: item.cf_norm,
           cbf_norm: item.cbf_norm,
           hybrid_score: item.hybrid_score,
           recommendation_source: "Hybrid Model (Exp 2)"
         } as Anime;
       } catch (e) {
-        console.warn(`Fallback digunakan untuk anime: ${item.title}`, e);
+        console.warn(`Fallback gambar Unsplash diaktifkan untuk anime: ${item.title}`);
         return {
           mal_id: item.mal_id || Math.floor(Math.random() * 100000),
           title: item.title,
@@ -111,8 +119,8 @@ async function enrichAnimeDataBatch(recommendations: any[]): Promise<Anime[]> {
               large_image_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=600"
             }
           },
-          genres: [],
-          themes: [],
+          genres: parsedGenres,
+          themes: parsedThemes,
           cf_norm: item.cf_norm,
           cbf_norm: item.cbf_norm,
           hybrid_score: item.hybrid_score,
@@ -125,7 +133,7 @@ async function enrichAnimeDataBatch(recommendations: any[]): Promise<Anime[]> {
     finalEnrichedAnimeList.push(...batchResults);
 
     if (i + BATCH_SIZE < recommendations.length) {
-      await delay(1000); // Jeda aman 1 detik antar-batch
+      await delay(1000); // Jeda aman 1 detik dari limit 429 Jikan
     }
   }
 
@@ -156,10 +164,6 @@ export async function searchAnime(query: string): Promise<Anime[]> {
   }
 }
 
-/**
- * SKENARIO 1: Ambil Rekomendasi berdasarkan Judul (Menembak /recommend di HF Space)
- * Mengembalikan list rekomendasi top 20 item sesuai request kamu.
- */
 export async function fetchRecommendationsByTitle(title: string): Promise<Anime[]> {
   try {
     const response = await fetch(`${FASTAPI_URL}/recommend?title=${encodeURIComponent(title)}&alpha=0.7&top_n=20`, {
@@ -175,24 +179,16 @@ export async function fetchRecommendationsByTitle(title: string): Promise<Anime[
     return await enrichAnimeDataBatch(recommendationsFromModel);
 
   } catch (error) {
-    console.error("Error pada Skenario 1 (By Title - Exp 2 Production):", error);
+    console.error("Error pada Skenario 1 (By Title):", error);
     return getMockAnimeList().slice(0, 15);
   }
 }
 
-/**
- * SKENARIO 2: Ambil Rekomendasi berdasarkan Filter Katalog Multi-Tag (Menembak /catalog di HF Space)
- * Menyulap array kombinasi genre & theme pilihan user ke bentuk format query string parameter bertumpuk.
- */
 export async function fetchRecommendationsByGenreTheme(genres: string[], themes: string[]): Promise<Anime[]> {
   try {
     const combinedTags = [...genres, ...themes];
-    
-    if (combinedTags.length === 0) {
-      return [];
-    }
+    if (combinedTags.length === 0) return [];
 
-    // Membangun format parameter array yang dikenali oleh FastAPI: ?tags=Action&tags=Shounen&top_n=20
     const queryParams = combinedTags.map(tag => `tags=${encodeURIComponent(tag)}`).join('&');
     const url = `${FASTAPI_URL}/catalog?${queryParams}&top_n=20`;
 
@@ -201,7 +197,7 @@ export async function fetchRecommendationsByGenreTheme(genres: string[], themes:
       headers: { "Accept": "application/json" }
     });
 
-    if (!response.ok) throw new Error("Gagal mengambil data katalog biner dari cloud server BE_EXP2.");
+    if (!response.ok) throw new Error("Gagal mengambil data katalog dari cloud server BE_EXP2.");
 
     const resultData = await response.json();
     const recommendationsFromModel = resultData.data || [];
@@ -209,7 +205,7 @@ export async function fetchRecommendationsByGenreTheme(genres: string[], themes:
     return await enrichAnimeDataBatch(recommendationsFromModel);
 
   } catch (error) {
-    console.error("Error pada Skenario 2 (Catalog Filter - Exp 2 Production):", error);
+    console.error("Error pada Skenario 2 (Catalog Filter):", error);
     return getMockAnimeList().slice(0, 15);
   }
 }
