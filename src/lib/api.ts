@@ -133,7 +133,6 @@ export async function fetchRecommendationsByTitle(title: string): Promise<Anime[
     const resultData = await response.json();
     const recommendationsFromModel = resultData.data || [];
 
-    // Konversi kilat tanpa nunggu batch looping
     return mapBackendToFrontendModel(recommendationsFromModel);
 
   } catch (error) {
@@ -160,131 +159,7 @@ export async function fetchRecommendationsByGenreTheme(genres: string[], themes:
     const resultData = await response.json();
     const recommendationsFromModel = resultData.data || [];
 
-    // Konversi kilat tanpa nunggu batch looping
     return mapBackendToFrontendModel(recommendationsFromModel);
-
-  } catch (error) {
-    console.error("Error pada Skenario 2 (Catalog Filter):", error);
-    return getMockAnimeList().slice(0, 15);
-  }
-}
-
-function getMockAnimeList(): Anime[] {
-  return [
-    {
-      mal_id: 1,
-      title: "Cyberpunk: Edgerunners",
-      images: { jpg: { image_url: "https://cdn.myanimelist.net/images/anime/1818/126132l.jpg", large_image_url: "https://cdn.myanimelist.net/images/anime/1818/126132l.jpg" } },
-      synopsis: "In a dystopia riddled with corruption, a street kid strives to become an edgerunner.",
-      score: 8.6,
-      genres: [{ name: "Action" }, { name: "Sci-Fi" }],
-      themes: [{ name: "Cyberpunk" }]
-    }
-  ];
-}
-          themes: parsedThemes.length > 0 ? parsedThemes : (matchedAnime.themes || []),
-          cf_norm: item.cf_norm,
-          cbf_norm: item.cbf_norm,
-          hybrid_score: item.hybrid_score,
-          recommendation_source: "Hybrid Model (Exp 2)"
-        } as Anime;
-      } catch (e) {
-        console.warn(`Fallback gambar Unsplash diaktifkan untuk anime: ${item.title}`);
-        return {
-          mal_id: item.mal_id || Math.floor(Math.random() * 100000),
-          title: item.title,
-          score: item.score || 0,
-          synopsis: `Recommended via Hybrid Model Experiment 2. (Skor Relevansi: ${((item.hybrid_score || 0) * 100).toFixed(1)}%)`,
-          images: item.images || {
-            jpg: {
-              image_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=400",
-              large_image_url: "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=600"
-            }
-          },
-          genres: parsedGenres,
-          themes: parsedThemes,
-          cf_norm: item.cf_norm,
-          cbf_norm: item.cbf_norm,
-          hybrid_score: item.hybrid_score,
-          recommendation_source: "Hybrid Model (Exp 2)"
-        } as Anime;
-      }
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-    finalEnrichedAnimeList.push(...batchResults);
-
-    if (i + BATCH_SIZE < recommendations.length) {
-      await delay(1000); // Jeda aman 1 detik dari limit 429 Jikan
-    }
-  }
-
-  return finalEnrichedAnimeList;
-}
-
-export async function fetchTopAnime(): Promise<Anime[]> {
-  try {
-    const res = await fetch(`${BASE_URL}/top/anime?limit=15`);
-    if (!res.ok) throw new Error('Failed to fetch top anime');
-    const data = await res.json();
-    return data.data;
-  } catch (error) {
-    console.error('API Error:', error);
-    return getMockAnimeList();
-  }
-}
-
-export async function searchAnime(query: string): Promise<Anime[]> {
-  try {
-    const res = await fetch(`${BASE_URL}/anime?q=${query}&limit=12`);
-    if (!res.ok) throw new Error('Failed to fetch search result');
-    const data = await res.json();
-    return data.data;
-  } catch (error) {
-    console.error('API Error:', error);
-    return [];
-  }
-}
-
-export async function fetchRecommendationsByTitle(title: string): Promise<Anime[]> {
-  try {
-    const response = await fetch(`${FASTAPI_URL}/recommend?title=${encodeURIComponent(title)}&alpha=0.7&top_n=20`, {
-      method: "GET",
-      headers: { "Accept": "application/json" }
-    });
-
-    if (!response.ok) throw new Error("Gagal mengambil data dari cloud server BE_EXP2.");
-
-    const resultData = await response.json();
-    const recommendationsFromModel = resultData.data || [];
-
-    return await enrichAnimeDataBatch(recommendationsFromModel);
-
-  } catch (error) {
-    console.error("Error pada Skenario 1 (By Title):", error);
-    return getMockAnimeList().slice(0, 15);
-  }
-}
-
-export async function fetchRecommendationsByGenreTheme(genres: string[], themes: string[]): Promise<Anime[]> {
-  try {
-    const combinedTags = [...genres, ...themes];
-    if (combinedTags.length === 0) return [];
-
-    const queryParams = combinedTags.map(tag => `tags=${encodeURIComponent(tag)}`).join('&');
-    const url = `${FASTAPI_URL}/catalog?${queryParams}&top_n=20`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: { "Accept": "application/json" }
-    });
-
-    if (!response.ok) throw new Error("Gagal mengambil data katalog dari cloud server BE_EXP2.");
-
-    const resultData = await response.json();
-    const recommendationsFromModel = resultData.data || [];
-
-    return await enrichAnimeDataBatch(recommendationsFromModel);
 
   } catch (error) {
     console.error("Error pada Skenario 2 (Catalog Filter):", error);
