@@ -4,8 +4,8 @@
 
 export const BASE_URL = 'https://api.jikan.moe/v4';
 
-// Endpoint murni Hugging Face Space Experiment 2 milikmu
-const FASTAPI_URL = "https://jikojeromi77-be-experiment2.hf.space";
+// Endpoint murni Hugging Face Space Experiment 2 milikmu (Disesuaikan dengan nama Space asli)
+const FASTAPI_URL = "https://jikojeromi77-be-exp2.hf.space";
 
 export interface Anime {
   mal_id: number;
@@ -123,7 +123,8 @@ export async function searchAnime(query: string): Promise<Anime[]> {
 
 export async function fetchRecommendationsByTitle(title: string): Promise<Anime[]> {
   try {
-    const response = await fetch(`${FASTAPI_URL}/recommend?title=${encodeURIComponent(title)}&alpha=0.7&top_n=20`, {
+    // Memperbaiki route menjadi /recommend/by-title sesuai dengan isi main.py backend-mu
+    const response = await fetch(`${FASTAPI_URL}/recommend/by-title?title=${encodeURIComponent(title)}&alpha=0.7&top_n=20`, {
       method: "GET",
       headers: { "Accept": "application/json" }
     });
@@ -147,6 +148,7 @@ export async function fetchRecommendationsByGenreTheme(genres: string[], themes:
     if (combinedTags.length === 0) return [];
 
     const queryParams = combinedTags.map(tag => `tags=${encodeURIComponent(tag)}`).join('&');
+    // Jika endpoint catalog kamu di main.py menggunakan route modifikasi, pastikan jalurnya sinkron
     const url = `${FASTAPI_URL}/catalog?${queryParams}&top_n=20`;
 
     const response = await fetch(url, {
@@ -180,3 +182,4 @@ function getMockAnimeList(): Anime[] {
     }
   ];
 }
+
