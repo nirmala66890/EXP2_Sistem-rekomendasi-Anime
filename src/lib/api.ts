@@ -4,7 +4,7 @@
 
 export const BASE_URL = 'https://api.jikan.moe/v4';
 
-// Endpoint murni Hugging Face Space Experiment 2 milikmu (Disesuaikan dengan nama Space asli)
+// Endpoint murni Hugging Face Space Experiment 2 sesuai link aslimu
 const FASTAPI_URL = "https://jikojeromi77-be-exp2.hf.space";
 
 export interface Anime {
@@ -54,14 +54,15 @@ function safeParseTags(tagRaw: any): { name: string }[] {
 
 /**
  * HELPER UTAMA: Mengonversi format data keluaran BE Eksperimen 2 langsung ke UI React.
- * Membaca image_url secara instan tanpa memicu 429 Rate Limit Jikan!
  */
 function mapBackendToFrontendModel(recommendations: any[]): Anime[] {
+  if (!Array.isArray(recommendations)) return [];
+  
   return recommendations.map((item) => {
     const parsedGenres = safeParseTags(item.genres);
     const parsedThemes = safeParseTags(item.themes);
     
-    // Gunakan image_url langsung dari lookup CSV katalog backend baru kita
+    // Mengambil image_url langsung dari lookup data katalog backend kamu
     const directImageUrl = item.image_url || "https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=400";
 
     return {
@@ -86,7 +87,7 @@ function mapBackendToFrontendModel(recommendations: any[]): Anime[] {
 }
 
 // ==============================================================================
-// KODE PENYELAMAT COMPATIBILITY: Agar komponen React lama tidak memicu error build di Netlify
+// KODE PENYELAMAT COMPATIBILITY
 // ==============================================================================
 export async function enrichAnimeDataBatch(recommendations: any[]): Promise<Anime[]> {
   return mapBackendToFrontendModel(recommendations);
@@ -123,7 +124,6 @@ export async function searchAnime(query: string): Promise<Anime[]> {
 
 export async function fetchRecommendationsByTitle(title: string): Promise<Anime[]> {
   try {
-    // Memperbaiki route menjadi /recommend/by-title sesuai dengan isi main.py backend-mu
     const response = await fetch(`${FASTAPI_URL}/recommend/by-title?title=${encodeURIComponent(title)}&alpha=0.7&top_n=20`, {
       method: "GET",
       headers: { "Accept": "application/json" }
@@ -132,7 +132,9 @@ export async function fetchRecommendationsByTitle(title: string): Promise<Anime[
     if (!response.ok) throw new Error("Gagal mengambil data dari cloud server BE_EXP2.");
 
     const resultData = await response.json();
-    const recommendationsFromModel = resultData.data || [];
+    
+    // Membaca langsung array atau fallback ke property .data jika tipenya objek
+    const recommendationsFromModel = Array.isArray(resultData) ? resultData : (resultData.data || []);
 
     return mapBackendToFrontendModel(recommendationsFromModel);
 
@@ -148,7 +150,6 @@ export async function fetchRecommendationsByGenreTheme(genres: string[], themes:
     if (combinedTags.length === 0) return [];
 
     const queryParams = combinedTags.map(tag => `tags=${encodeURIComponent(tag)}`).join('&');
-    // Jika endpoint catalog kamu di main.py menggunakan route modifikasi, pastikan jalurnya sinkron
     const url = `${FASTAPI_URL}/catalog?${queryParams}&top_n=20`;
 
     const response = await fetch(url, {
@@ -159,7 +160,7 @@ export async function fetchRecommendationsByGenreTheme(genres: string[], themes:
     if (!response.ok) throw new Error("Gagal mengambil data katalog dari cloud server BE_EXP2.");
 
     const resultData = await response.json();
-    const recommendationsFromModel = resultData.data || [];
+    const recommendationsFromModel = Array.isArray(resultData) ? resultData : (resultData.data || []);
 
     return mapBackendToFrontendModel(recommendationsFromModel);
 
@@ -182,4 +183,3 @@ function getMockAnimeList(): Anime[] {
     }
   ];
 }
-
